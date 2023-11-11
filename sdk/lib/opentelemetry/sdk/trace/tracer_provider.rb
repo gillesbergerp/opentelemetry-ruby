@@ -27,7 +27,7 @@ module OpenTelemetry
         #   TracerProvider
         #
         # @return [TracerProvider]
-        def initialize(sampler: sampler_from_environment(Samplers.parent_based(root: Samplers::ALWAYS_ON)),
+        def initialize(sampler: nil,
                        resource: OpenTelemetry::SDK::Resources::Resource.create,
                        id_generator: OpenTelemetry::Trace,
                        span_limits: SpanLimits::DEFAULT)
@@ -36,10 +36,10 @@ module OpenTelemetry
           @registry_mutex = Mutex.new
           @span_processors = []
           @span_limits = span_limits
-          @sampler = sampler
           @id_generator = id_generator
           @stopped = false
           @resource = resource
+          @sampler = sampler_from_environment(Samplers.parent_based(root: Samplers::ALWAYS_ON))
         end
 
         # Returns a {Tracer} instance.
@@ -126,7 +126,8 @@ module OpenTelemetry
         end
 
         # @api private
-        def internal_start_span(name, kind, attributes, links, start_timestamp, parent_context, instrumentation_scope) # rubocop:disable Metrics/MethodLength
+        def internal_start_span(name, kind, attributes, links, start_timestamp, parent_context, instrumentation_scope)
+          # rubocop:disable Metrics/MethodLength
           parent_span = OpenTelemetry::Trace.current_span(parent_context)
           parent_span_context = parent_span.context
 
@@ -165,6 +166,14 @@ module OpenTelemetry
         private
 
         def sampler_from_environment(default_sampler)
+          sampler = OpenTelemetry::Sampling::XRay::Sampler.new(
+            endpoint: 'http://localhost:2000',
+            resource: @resource,
+            fallback_sampler: Samplers.trace_id_ratio_based(0.05)
+          )
+          sampler.start
+          return sampler
+
           case ENV['OTEL_TRACES_SAMPLER']
           when 'always_on' then Samplers::ALWAYS_ON
           when 'always_off' then Samplers::ALWAYS_OFF
